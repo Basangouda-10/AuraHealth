@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AuraHealth AI Kiosk - Check-In & Registration</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .card-custom { background-color: #1e293b; border: 1px solid #334155; border-radius: 12px; }
+        .webcam-container { position: relative; border-radius: 12px; overflow: hidden; border: 2px solid #0284c7; }
+        .webcam-feed { width: 100%; height: auto; display: block; }
+        .badge-enrolled { background-color: #10b981; color: white; }
+        .badge-shift { background-color: #0284c7; color: white; }
+    </style>
+</head>
+<body>
+
+<div class="container-fluid py-4 px-4">
+    <!-- Header Bar with Full Database Reset Option -->
+    <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary">
+        <div>
+            <h1 class="h3 font-weight-bold text-info mb-1"><i class="fa-solid fa-heart-pulse me-2"></i>AuraHealth AI Kiosk</h1>
+            <p class="text-muted mb-0">Smart Hospital Biometric Check-In & Registration Terminal</p>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-success p-2 fs-6"><i class="fa-solid fa-camera me-1"></i> Scanner Active</span>
+            <button class="btn btn-outline-danger btn-sm" onclick="confirmResetDatabase()">
+                <i class="fa-solid fa-trash-can me-1"></i> Reset All DB
+            </button>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <!-- Left Column: Live Camera Feed & Scanner Controls -->
+        <div class="col-lg-5">
+            <div class="card-custom p-3">
+                <h5 class="card-title text-light mb-3"><i class="fa-solid fa-expand me-2 text-info"></i>Biometric Scanner</h5>
+                <div class="webcam-container mb-3">
+                    <img src="{{ url_for('video_feed') }}" class="webcam-feed" alt="Live Webcam Stream">
+                </div>
+                
+                <button class="btn btn-info btn-lg w-100 fw-bold mb-3" id="scanBtn" onclick="authenticateCheckin()">
+                    <i class="fa-solid fa-user-check me-2"></i> Scan Face & Check-In
+                </button>
+
+                <div id="scanStatus" class="alert alert-secondary text-center d-none" role="alert">
+                    Ready to scan...
+                </div>
+            </div>
+        </div>
+
+        <!-- Right Column: Registration Form & Attendance Table -->
+        <div class="col-lg-7">
+            <!-- Registration Form Card -->
+            <div class="card-custom p-3 mb-4">
+                <h5 class="card-title text-light mb-3"><i class="fa-solid fa-user-plus me-2 text-info"></i>New Staff Biometric Enrolment</h5>
+                <form id="registerForm">
+                    <div class="row g-2">
+                        <div class="col-md-4">
+                            <input type="text" class="form-control bg-dark text-light border-secondary" id="regName" placeholder="Full Name" required>
+                        </div>
+                        <div class="col-md-4">
+                            <select class="form-select bg-dark text-light border-secondary" id="regRole" required>
+                                <option value="" disabled selected>Select Role</option>
+                                <option value="Doctor">Doctor</option>
+                                <option value="Nurse">Nurse</option>
+                                <option value="Surgeon">Surgeon</option>
+                                <option value="Staff">Staff</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <select class="form-select bg-dark text-light border-secondary" id="regDept" required>
+                                <option value="" disabled selected>Select Department</option>
+                                <option value="Cardiology">Cardiology</option>
+                                <option value="Emergency / ICU">Emergency / ICU</option>
+                                <option value="Neurology">Neurology</option>
+                                <option value="Pediatrics">Pediatrics</option>
+                                <option value="General Medicine">General Medicine</option>
+                                <option value="Orthopedics">Orthopedics</option>
+                                <option value="Surgery">Surgery</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-outline-info w-100 mt-3 fw-semibold" onclick="registerStaff()">
+                        <i class="fa-solid fa-id-card me-2"></i> Register Face Data
+                    </button>
+                </form>
+            </div>
+
+            <!-- Check-In Logs Table with Row-by-Row Delete Option -->
+            <div class="card-custom p-3">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="card-title text-light mb-0"><i class="fa-solid fa-clock-rotate-left me-2 text-info"></i>Recent Check-In Logs</h5>
+                    <small class="text-muted"><i class="fa-solid fa-arrows-rotate me-1"></i>Auto-refreshing</small>
+                </div>
+                
+                <div class="table-responsive" style="max-height: 280px; overflow-y: auto;">
+                    <table class="table table-dark table-hover mb-0 align-middle">
+                        <thead class="table-secondary sticky-top">
+                            <tr>
+                                <th>Name</th>
+                                <th>Role</th>
+                                <th>Department</th>
+                                <th>IST Time Live</th>
+                                <th>Shift</th>
+                                <th>Status</th>
+                                <th class="text-center">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="checkinLogsTableBody">
+                            <tr><td colspan="7" class="text-center text-muted">Loading logs...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<script>
+    // 1. Authenticate Face Check-In
+    async function authenticateCheckin() {
+        const statusDiv = document.getElementById('scanStatus');
+        const scanBtn = document.getElementById('scanBtn');
+        
+        statusDiv.classList.remove('d-none', 'alert-success', 'alert-danger');
+        statusDiv.classList.add('alert-secondary');
+        statusDiv.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-2"></i> Authenticating face pattern...';
+        scanBtn.disabled = true;
+
+        try {
+            const response = await fetch('/authenticate_checkin', { method: 'POST' });
+            const data = await response.json();
+
+            if (data.success) {
+                statusDiv.classList.remove('alert-secondary');
+                statusDiv.classList.add('alert-success');
+                statusDiv.innerHTML = `<i class="fa-solid fa-circle-check me-2"></i> Welcome, <strong>${data.staff.name}</strong>! Redirecting to dashboard...`;
+                
+                fetchRecentLogs();
+
+                setTimeout(() => {
+                    window.location.href = `/dashboard?staff_id=${data.staff.id}`;
+                }, 1500);
+            } else {
+                statusDiv.classList.remove('alert-secondary');
+                statusDiv.classList.add('alert-danger');
+                statusDiv.innerHTML = `<i class="fa-solid fa-circle-xmark me-2"></i> ${data.message}`;
+                scanBtn.disabled = false;
+            }
+        } catch (error) {
+            statusDiv.classList.remove('alert-secondary');
+            statusDiv.classList.add('alert-danger');
+            statusDiv.innerHTML = `<i class="fa-solid fa-triangle-exclamation me-2"></i> Check-in failed. Please try again.`;
+            scanBtn.disabled = false;
+        }
+    }
+
+    // 2. Register New Staff Member Biometrics
+    async function registerStaff() {
+        const name = document.getElementById('regName').value.trim();
+        const role = document.getElementById('regRole').value;
+        const dept = document.getElementById('regDept').value;
+
+        if (!name || !role || !dept) {
+            alert("Please fill in all fields (Name, Select Role, and Select Department).");
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('name', name);
+        formData.append('role', role);
+        formData.append('department', dept);
+
+        try {
+            const response = await fetch('/register_staff', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                alert(data.message);
+                document.getElementById('registerForm').reset();
+                fetchRecentLogs();
+            } else {
+                alert("Registration failed: " + data.message);
+            }
+        } catch (error) {
+            alert("An error occurred during enrolment. Check camera connection.");
+        }
+    }
+
+    // 3. Fetch recent logs & render with Delete action button per row
+    async function fetchRecentLogs() {
+        try {
+            const response = await fetch('/get_attendance_logs');
+            const data = await response.json();
+
+            if (data.success) {
+                const tbody = document.getElementById('checkinLogsTableBody');
+                tbody.innerHTML = '';
+
+                if (data.logs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted">No check-ins logged yet.</td></tr>';
+                    return;
+                }
+
+                data.logs.forEach(log => {
+                    const statusBadge = log.status === 'Checked-Out' ? 
+                        '<span class="badge bg-secondary">Checked-Out</span>' : 
+                        '<span class="badge bg-success">Checked-In</span>';
+
+                    tbody.innerHTML += `
+                        <tr>
+                            <td><strong>${log.name}</strong></td>
+                            <td>${log.role}</td>
+                            <td>${log.department}</td>
+                            <td><small class="text-info"><i class="fa-regular fa-clock me-1"></i>${log.ist_time}</small></td>
+                            <td><span class="badge badge-shift">${log.shift}</span></td>
+                            <td>${statusBadge}</td>
+                            <td class="text-center">
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteSingleLog(${log.log_id})" title="Delete entry">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                });
+            }
+        } catch (error) {
+            console.error("Error fetching check-in logs:", error);
+        }
+    }
+
+    // 4. Delete individual log row
+    async function deleteSingleLog(logId) {
+        if (!confirm("Are you sure you want to delete this log entry?")) return;
+
+        try {
+            const res = await fetch(`/delete_log/${logId}`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                fetchRecentLogs();
+            } else {
+                alert("Delete failed: " + data.message);
+            }
+        } catch (e) {
+            alert("Failed to communicate with server.");
+        }
+    }
+
+    // 5. Reset full database
+    async function confirmResetDatabase() {
+        if (!confirm("⚠️ Are you sure you want to completely wipe all enrolled staff, tasks, and attendance logs?")) return;
+
+        try {
+            const res = await fetch('/reset_database', { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+                alert("Database successfully wiped!");
+                fetchRecentLogs();
+            } else {
+                alert("Reset failed: " + data.message);
+            }
+        } catch (e) {
+            alert("Failed to reach server.");
+        }
+    }
+
+    // Initial Fetch & Auto Refresh every 5 seconds
+    fetchRecentLogs();
+    setInterval(fetchRecentLogs, 5000);
+</script>
+</body>
+</html>

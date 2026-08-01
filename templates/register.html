@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AuraHealth - Staff Face Registration</title>
+    <style>
+        body {
+            background-color: #0d1117;
+            color: #c9d1d9;
+            font-family: Arial, sans-serif;
+            padding: 30px;
+            margin: 0;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        h1 { color: #58a6ff; margin-top: 10px; }
+        .nav-btn {
+            color: #58a6ff;
+            text-decoration: none;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 15px;
+        }
+        .registration-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 25px;
+            background-color: #161b22;
+            padding: 25px;
+            border-radius: 8px;
+            border: 1px solid #30363d;
+        }
+        .stream-container {
+            border: 2px solid #30363d;
+            border-radius: 8px;
+            overflow: hidden;
+            background-color: #0d1117;
+        }
+        img { width: 100%; display: block; }
+        .form-group {
+            margin-bottom: 18px;
+            text-align: left;
+        }
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-weight: bold;
+            color: #8b949e;
+        }
+        input, select {
+            width: 100%;
+            padding: 10px;
+            background-color: #0d1117;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            color: #c9d1d9;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        input:focus, select:focus {
+            border-color: #58a6ff;
+            outline: none;
+        }
+        .btn {
+            background-color: #238636;
+            color: #ffffff;
+            border: none;
+            padding: 12px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            width: 100%;
+            margin-top: 10px;
+        }
+        .btn:hover { background-color: #2ea043; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="/" class="nav-btn">&larr; Return to Kiosk Check-In</a>
+        <h1>Hospital Staff Face Registration</h1>
+        <p>Position the staff member in front of the camera and enter their details below.</p>
+
+        <div class="registration-grid">
+            <!-- Camera Stream Feed -->
+            <div class="stream-container">
+                <img src="{{ url_for('video_feed') }}" alt="Live Registration Stream">
+            </div>
+
+            <!-- Registration Form -->
+            <form id="register-form">
+                <div class="form-group">
+                    <label for="name">Full Name</label>
+                    <input type="text" id="name" name="name" placeholder="e.g., Dr. Ananya Roy" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="role">Staff Role</label>
+                    <select id="role" name="role" required>
+                        <option value="Chief Surgeon">Chief Surgeon</option>
+                        <option value="Senior Physician">Senior Physician</option>
+                        <option value="Head Nurse">Head Nurse</option>
+                        <option value="Resident Doctor">Resident Doctor</option>
+                        <option value="Administrative Staff">Administrative Staff</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label for="department">Department</label>
+                    <select id="department" name="department" required>
+                        <option value="Cardiology">Cardiology</option>
+                        <option value="Emergency & ICU">Emergency &amp; ICU</option>
+                        <option value="Orthopedics">Orthopedics</option>
+                        <option value="Neurology">Neurology</option>
+                        <option value="General Medicine">General Medicine</option>
+                    </select>
+                </div>
+
+                <button type="button" class="btn" onclick="submitRegistration()">Capture &amp; Register Staff</button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function submitRegistration() {
+            const form = document.getElementById('register-form');
+            const formData = new FormData(form);
+
+            fetch('/register_staff', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert(data.message);
+                    window.location.href = '/dashboard/' + data.staff_id;
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            })
+            .catch(err => alert('Failed to register staff. Check server logs.'));
+        }
+    </script>
+</body>
+</html>

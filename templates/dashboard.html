@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AuraHealth AI - Staff Clinical Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #0f172a; color: #f8fafc; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        .card-custom { background-color: #1e293b; border: 1px solid #334155; border-radius: 12px; }
+        .task-critical { border-left: 4px solid #ef4444; }
+        .task-normal { border-left: 4px solid #0284c7; }
+    </style>
+</head>
+<body>
+
+<div class="container-fluid py-4 px-4">
+    <!-- Top Bar with Staff Profile Info & LOGOUT Button -->
+    <div class="d-flex justify-content-between align-items-center mb-4 pb-3 border-bottom border-secondary">
+        <div>
+            <h2 class="h4 font-weight-bold text-info mb-0">
+                <i class="fa-solid fa-user-doctor me-2"></i>Welcome, {{ staff[0] if staff else 'Staff Member' }}
+            </h2>
+            <small class="text-muted">Role: {{ staff[1] if staff else 'N/A' }} | Department: {{ staff[2] if staff else 'N/A' }}</small>
+        </div>
+        
+        <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-primary p-2 fs-6 me-2"><i class="fa-solid fa-clock me-1"></i> Shift Active</span>
+            
+            <!-- LOGOUT BUTTON -->
+            <button class="btn btn-danger font-weight-bold" onclick="handleLogout()">
+                <i class="fa-solid fa-right-from-bracket me-2"></i>Logout / Check-Out
+            </button>
+        </div>
+    </div>
+
+    <!-- Main Dashboard Grid -->
+    <div class="row g-4">
+        <!-- Shift Tasks & Priorities -->
+        <div class="col-lg-7">
+            <div class="card-custom p-4">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="text-light mb-0"><i class="fa-solid fa-list-check text-info me-2"></i>Active Shift Tasks</h5>
+                    <small class="text-muted" id="lastSyncTime">Syncing...</small>
+                </div>
+                
+                <div id="taskList" class="d-flex flex-column gap-3">
+                    <div class="text-center text-muted py-3">Loading tasks...</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- AI Clinical Assistant -->
+        <div class="col-lg-5">
+            <div class="card-custom p-4">
+                <h5 class="text-light mb-3"><i class="fa-solid fa-robot text-info me-2"></i>Aura AI Assistant</h5>
+                
+                <div id="aiChatBox" class="bg-dark p-3 rounded mb-3" style="height: 250px; overflow-y: auto;">
+                    <p class="text-muted mb-0">Ask for clinical triage, drug info, or shift notes...</p>
+                </div>
+
+                <div class="input-group">
+                    <input type="text" id="aiInput" class="form-control bg-dark text-light border-secondary" placeholder="Type clinical query...">
+                    <button class="btn btn-info" onclick="askAIAssistant()"><i class="fa-solid fa-paper-plane"></i></button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const currentStaffId = "{{ staff_id }}";
+
+    // 1. Fetch Staff Tasks and render
+    async function loadDashboard() {
+        if (!currentStaffId) return;
+
+        try {
+            const res = await fetch(`/get_staff_dashboard/${currentStaffId}`);
+            const data = await res.json();
+
+            if (data.success) {
+                const list = document.getElementById('taskList');
+                list.innerHTML = '';
+
+                if (data.tasks.length === 0) {
+                    list.innerHTML = '<div class="text-center text-muted py-3">No active tasks for this shift.</div>';
+                    return;
+                }
+
+                data.tasks.forEach(t => {
+                    const isCritical = t.priority === 'Critical' || t.category === 'Emergency';
+                    const cssClass = isCritical ? 'task-critical' : 'task-normal';
+                    const isCompleted = t.status === 'Completed';
+
+                    list.innerHTML += `
+                        <div class="p-3 bg-dark rounded ${cssClass} d-flex justify-content-between align-items-center">
+                            <div>
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="badge ${isCritical ? 'bg-danger' : 'bg-info'}">${t.category}</span>
+                                    <small class="text-muted"><i class="fa-regular fa-clock me-1"></i>${t.time}</small>
+                                </div>
+                                <h6 class="mb-0 mt-2 ${isCompleted ? 'text-decoration-line-through text-muted' : 'text-light'}">${t.title}</h6>
+                            </div>
+                            <button class="btn btn-sm ${isCompleted ? 'btn-outline-secondary' : 'btn-outline-success'}" 
+                                onclick="toggleTaskStatus(${t.id}, '${isCompleted ? 'Pending' : 'Completed'}')">
+                                ${isCompleted ? '<i class="fa-solid fa-rotate-left"></i>' : '<i class="fa-solid fa-check"></i> Done'}
+                            </button>
+                        </div>
+                    `;
+                });
+
+                document.getElementById('lastSyncTime').innerText = 'Last updated: ' + new Date().toLocaleTimeString();
+            }
+        } catch (e) {
+            console.error("Error loading dashboard data:", e);
+        }
+    }
+
+    // 2. Toggle Task Status
+    async function toggleTaskStatus(taskId, newStatus) {
+        try {
+            await fetch('/update_task_status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ task_id: taskId, status: newStatus })
+            });
+            loadDashboard();
+        } catch (e) {
+            alert("Failed to update task.");
+        }
+    }
+
+    // 3. AI Assistant Inquiry
+    async function askAIAssistant() {
+        const input = document.getElementById('aiInput');
+        const chatBox = document.getElementById('aiChatBox');
+        const prompt = input.value.trim();
+
+        if (!prompt) return;
+
+        chatBox.innerHTML += `<p class="text-info mb-1"><strong>You:</strong> ${prompt}</p>`;
+        input.value = '';
+        chatBox.scrollTop = chatBox.scrollHeight;
+
+        try {
+            const res = await fetch('/ai_assistant', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt: prompt, staff_id: currentStaffId })
+            });
+            const data = await res.json();
+
+            if (data.success) {
+                chatBox.innerHTML += `<p class="text-light mb-3"><strong>AI:</strong> ${data.response}</p>`;
+            } else {
+                chatBox.innerHTML += `<p class="text-danger mb-3"><strong>AI Error:</strong> ${data.message}</p>`;
+            }
+            chatBox.scrollTop = chatBox.scrollHeight;
+        } catch (e) {
+            chatBox.innerHTML += `<p class="text-danger mb-3">Failed to connect to AI engine.</p>`;
+        }
+    }
+
+    // 4. Logout / Check-Out Function
+    async function handleLogout() {
+        if (!confirm("Are you sure you want to log out and check out of your shift?")) return;
+
+        try {
+            const response = await fetch(`/logout/${currentStaffId}`, { method: 'POST' });
+            const data = await response.json();
+
+            if (data.success) {
+                window.location.href = '/';
+            } else {
+                alert("Logout error: " + data.message);
+            }
+        } catch (error) {
+            alert("Failed to connect to logout endpoint.");
+        }
+    }
+
+    // Auto load & polling
+    loadDashboard();
+    setInterval(loadDashboard, 10000);
+</script>
+</body>
+</html>
